@@ -1,4 +1,4 @@
-# TTY Party
+# TTY verse
 
 A 3D space for your interactive terminals.
 

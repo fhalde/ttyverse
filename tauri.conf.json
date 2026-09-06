@@ -1,11 +1,11 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "TTY Party",
+  "productName": "TTY verse",
   "version": "0.1.0",
-  "identifier": "ttyparty",
+  "identifier": "ttyverse",
   "build": { "frontendDist": "dist" },
   "app": {
-    "windows": [{ "title": "TTY Party", "width": 1200, "height": 800 }],
+    "windows": [{ "title": "TTY verse", "width": 1200, "height": 800 }],
     "security": { "csp": null }
   },
   "bundle": { "active": false, "icon": [] }
