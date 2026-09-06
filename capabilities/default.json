@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Allow the main window to use Scenic's terminal bridge.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

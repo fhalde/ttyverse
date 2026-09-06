@@ -1,0 +1,16 @@
+{
+  "private": true,
+  "scripts": {
+    "build": "vite build"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.8.0",
+    "@xterm/addon-canvas": "^0.7.0",
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "three": "^0.183.1"
+  },
+  "devDependencies": {
+    "vite": "^7.1.0"
+  }
+}

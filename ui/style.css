@@ -1,0 +1,45 @@
+html,
+body,
+#terminals,
+#scene {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  background: #141419;
+}
+
+#terminals {
+  box-sizing: border-box;
+  display: flex;
+  position: fixed;
+  left: 0;
+  top: 0;
+  width: 640px;
+  height: 420px;
+  gap: 0;
+  padding: 0;
+}
+
+#terminals section {
+  flex: 0 0 640px;
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  width: 640px;
+  min-width: 0;
+  height: 420px;
+  overflow: hidden;
+  padding: 0;
+  background: #1e1e26;
+}
+
+#scene {
+  z-index: 1;
+  display: block;
+  position: fixed;
+  inset: 0;
+}

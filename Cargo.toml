@@ -4,7 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-bevy = "0.16"
 portable-pty = "0.9"
-vt100 = "0.15"
 anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+tauri = "2.11.5"
+
+[build-dependencies]
+tauri-build = "2.6.3"
