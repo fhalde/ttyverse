@@ -9,7 +9,7 @@ body,
 
 body {
   overflow: hidden;
-  background: #141419;
+  background: #eae2dc;
 }
 
 #terminals {
@@ -34,7 +34,7 @@ body {
   height: 420px;
   overflow: hidden;
   padding: 0;
-  background: #1e1e26;
+  background: #191918;
 }
 
 #scene {
@@ -50,12 +50,12 @@ body {
   bottom: 20px;
   left: 24px;
   right: 24px;
-  color: #c4d0e4;
+  color: #6b6258;
   font: 12px/1.6 system-ui, sans-serif;
   pointer-events: none;
   padding: 10px 14px;
-  border-radius: 8px;
-  background: #10141dcc;
+  border-radius: 16px;
+  background: #faf6eeeb;
 }
 
 #reticle {
@@ -64,7 +64,7 @@ body {
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  color: #c4d0e4;
+  color: #6b6258;
   pointer-events: none;
   font: 20px monospace;
 }
@@ -78,19 +78,19 @@ body {
   align-items: center;
   gap: 12px;
   padding: 8px;
-  border-radius: 8px;
-  background: #10141dee;
-  color: #c4d0e4;
+  border-radius: 16px;
+  background: #faf6eef5;
+  color: #6b6258;
   font: 13px system-ui, sans-serif;
 }
 
 #speed-control button {
   width: 32px;
   height: 32px;
-  border: 1px solid #526079;
-  border-radius: 5px;
-  background: #253047;
-  color: white;
+  border: 1px solid #cfc3b4;
+  border-radius: 10px;
+  background: #eee5d8;
+  color: #39372f;
   cursor: pointer;
   font-size: 20px;
 }
@@ -106,51 +106,60 @@ body {
   top: 20px;
   left: 24px;
   padding: 10px 12px;
-  border-radius: 8px;
-  background: #10141dee;
-  color: #c4d0e4;
+  border-radius: 16px;
+  background: #faf6eef5;
+  color: #6b6258;
   font: 13px system-ui, sans-serif;
 }
 
 #font-control select {
   max-width: 240px;
   padding: 6px;
-  color: white;
-  background: #253047;
-  border: 1px solid #526079;
-  border-radius: 5px;
+  color: #39372f;
+  background: #eee5d8;
+  border: 1px solid #cfc3b4;
+  border-radius: 10px;
 }
 
 #settings {
-  width: min(460px, calc(100vw - 80px));
-  padding: 28px;
-  color: #d5f5f3;
-  background: #101e2bea;
-  border: 1px solid #70dbce80;
-  border-radius: 16px;
-  box-shadow: 0 0 60px #58dbc822;
-  backdrop-filter: blur(20px);
-  font: 14px/1.6 system-ui, sans-serif;
+  box-sizing: border-box;
+  width: min(500px, calc(100vw - 32px));
+  max-height: calc(100dvh - 40px);
+  padding: 30px;
+  color: #39372f;
+  background: #fbf7ef;
+  border: 1px solid #fffdf8;
+  border-radius: 26px;
+  box-shadow: 0 30px 100px #51433130, 0 4px 16px #51433112;
+  font: 14px/1.5 system-ui, sans-serif;
 }
-
-#settings::backdrop { background: #02091270; }
-#settings h2 { margin: 0 0 20px; font-size: 20px; font-weight: 500; }
-#settings #font-control,
-#settings #speed-control,
-#settings #hud {
-  position: static;
-  display: block;
-  background: transparent;
-  margin: 12px 0;
-  padding: 0;
-}
-#settings #speed-control { display: flex; }
-#settings > button {
-  margin-top: 12px;
-  padding: 8px 14px;
-  border: 1px solid #70dbce80;
-  border-radius: 6px;
-  background: #23454c;
-  color: #d5f5f3;
-  cursor: pointer;
+#settings::backdrop { background: #51433135; backdrop-filter: blur(8px); }
+.settings-eyebrow { color: #857969; font-size: 10px; font-weight: 650; letter-spacing: .14em; }
+#settings h2 { display: flex; align-items: center; justify-content: space-between; margin: 6px 0 0; font-size: 28px; font-weight: 650; letter-spacing: -.04em; }
+#settings h2 span { display: grid; place-items: center; width: 42px; height: 42px; border-radius: 14px; background: #e4eadb; color: #697657; font-size: 28px; }
+#settings header p { margin: 2px 0 25px; color: #8a7e6f; font-size: 13px; }
+#settings #font-control, .settings-row { position: static; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0; padding: 18px 0; border-radius: 0; border-top: 1px solid #e8e0d4; background: transparent; }
+.control-copy { color: #39372f; font-size: 13px; font-weight: 600; }
+.control-copy small { display: block; margin-top: 4px; color: #8a7e6f; font-size: 11px; font-weight: 400; }
+#settings #font-control select { box-sizing: border-box; width: 185px; max-width: 48%; padding: 10px 12px; border: 1px solid #dfd5c6; background: #fffcf7; color: #494238; border-radius: 10px; font: 12px system-ui, sans-serif; }
+#settings #speed-control { position: static; display: flex; gap: 4px; margin: 0; padding: 4px; background: #eee8de; border-radius: 12px; }
+#settings #speed-control button { width: 30px; height: 30px; border: 0; background: #fffcf7; border-radius: 8px; box-shadow: 0 1px 3px #51433112; font-size: 19px; }
+#speed-control output { min-width: 42px; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; }
+.shortcuts { margin-top: 5px; padding: 17px 18px; background: #f0ebe2; border: 1px solid #e8e0d4; border-radius: 16px; }
+.shortcuts h3 { margin: 0 0 12px; color: #887b6b; font-size: 10px; font-weight: 650; letter-spacing: .1em; text-transform: uppercase; }
+.shortcuts > div { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 29px; color: #655d51; font-size: 12px; }
+.shortcuts > div > span:last-child { display: flex; align-items: center; gap: 4px; font-size: 11px; }
+kbd { display: inline-block; padding: 2px 6px; border: 1px solid #ddd4c7; border-bottom-width: 2px; border-radius: 5px; background: #fcf9f3; color: #736858; font: 10px/1.4 ui-monospace, monospace; }
+#settings footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 22px; }
+#settings footer span { color: #8a7e6f; font-size: 11px; }
+#settings footer button { padding: 10px 24px; border: 1px solid #39372f; border-radius: 11px; background: #39372f; color: #fffaf0; font: 600 12px system-ui, sans-serif; cursor: pointer; }
+#settings button { transition: background .15s, transform .15s; }
+#settings button:hover:not(:disabled) { filter: brightness(.95); }
+#settings button:active:not(:disabled) { transform: translateY(1px); }
+#settings :focus-visible { outline: 2px solid #87966d; outline-offset: 3px; }
+#settings #hud { position: static; margin: 12px 0 0; padding: 10px; background: #f1dfd9; font-size: 12px; }
+#settings #hud[hidden] { display: none; }
+@media (max-width: 420px) {
+  #settings { padding: 22px; }
+  .control-copy small { max-width: 140px; }
 }

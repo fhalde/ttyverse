@@ -16,10 +16,12 @@ speedControl.id = "speed-control";
 speedControl.innerHTML = '<button type="button" aria-label="Decrease flight speed">−</button><output></output><button type="button" aria-label="Increase flight speed">+</button>';
 document.body.append(speedControl);
 const speeds = [0.5, 1, 2, 4, 8];
-let speedIndex = 1;
+let speedIndex = speeds.indexOf(Number(localStorage.getItem("flight-speed")));
+if (speedIndex < 0) speedIndex = 1;
 function changeSpeed(delta) {
   speedIndex = Math.max(0, Math.min(speeds.length - 1, speedIndex + delta));
-  speedControl.querySelector("output").textContent = "Flight speed " + speeds[speedIndex] + "×";
+  localStorage.setItem("flight-speed", String(speeds[speedIndex]));
+  speedControl.querySelector("output").textContent = speeds[speedIndex] + "×";
   speedControl.firstElementChild.disabled = speedIndex === 0;
   speedControl.lastElementChild.disabled = speedIndex === speeds.length - 1;
 }
@@ -33,7 +35,16 @@ reticle.textContent = "+";
 document.body.append(reticle);
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color("#111118");
+const backdrop = document.createElement("canvas");
+backdrop.width = backdrop.height = 512;
+const backdropContext = backdrop.getContext("2d");
+const wash = backdropContext.createRadialGradient(180, 150, 20, 256, 256, 390);
+wash.addColorStop(0, "#f5ede3");
+wash.addColorStop(1, "#e4dcda");
+backdropContext.fillStyle = wash;
+backdropContext.fillRect(0, 0, 512, 512);
+scene.background = new THREE.CanvasTexture(backdrop);
+scene.background.colorSpace = THREE.SRGBColorSpace;
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 2000);
 camera.position.set(0, 0, 18);
 camera.rotation.order = "YXZ";
@@ -46,13 +57,21 @@ const positions = new Float32Array(1800);
 for (let i = 0; i < positions.length; i++) positions[i] = (Math.random() - 0.5) * 500;
 const stars = new THREE.BufferGeometry();
 stars.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-scene.add(new THREE.Points(stars, new THREE.PointsMaterial({ color: "#6a789a", size: 0.12 })));
+scene.add(new THREE.Points(stars, new THREE.PointsMaterial({ color: "#baaca0", size: 0.08 })));
 
+// Keep terminal identities stable as focus changes; repeat after five windows.
+const terminalPalette = [
+  { background: "#191918", foreground: "#eee9df", muted: "#aaa79e", border: "#46443e" },
+  { background: "#faf3df", foreground: "#39372f", muted: "#777264", border: "#d3cbb7" },
+  { background: "#dfe7fa", foreground: "#303b50", muted: "#68758c", border: "#b6c3dd" },
+  { background: "#e3eadc", foreground: "#354132", muted: "#6b7965", border: "#bdcab3" },
+  { background: "#f1dfd9", foreground: "#4d3734", muted: "#876c66", border: "#d6b9b0" }
+];
 const terminals = new Map();
 let selectedFont = localStorage.getItem("terminal-font") || "Menlo";
 const fontControl = document.createElement("label");
 fontControl.id = "font-control";
-fontControl.textContent = "Terminal font ";
+fontControl.innerHTML = '<span class="control-copy">Terminal font<small>A little character for your command line.</small></span>';
 const fontSelect = document.createElement("select");
 fontSelect.setAttribute("aria-label", "Terminal font");
 fontSelect.add(new Option(selectedFont, selectedFont));
@@ -60,12 +79,31 @@ fontControl.append(fontSelect);
 document.body.append(fontControl);
 const settings = document.createElement("dialog");
 settings.id = "settings";
-settings.setAttribute("aria-label", "Flight settings");
-const heading = document.createElement("h2");
-heading.textContent = "Flight settings";
+settings.setAttribute("aria-label", "Settings");
+const settingsHeader = document.createElement("header");
+settingsHeader.innerHTML = '<span class="settings-eyebrow">MAKE YOURSELF AT HOME</span><h2>Settings<span aria-hidden="true">✳</span></h2><p>Your space. Your pace.</p>';
+const speedRow = document.createElement("div");
+speedRow.className = "settings-row";
+speedRow.innerHTML = '<span class="control-copy">Flight speed<small>Find your cruising speed.</small></span>';
+speedRow.append(speedControl);
+const shortcuts = document.createElement("div");
+shortcuts.className = "shortcuts";
+shortcuts.innerHTML = `<h3>Around your space</h3>
+  <div><span>Move</span><span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span></div>
+  <div><span>Down / up</span><span><kbd>Q</kbd><kbd>E</kbd></span></div>
+  <div><span>Boost</span><kbd>Shift</kbd></div>
+  <div><span>Look around</span><span>Mouse · <kbd>F</kbd> capture</span></div>
+  <div><span>New terminal</span><kbd>⌘ / Ctrl + T</kbd></div>
+  <div><span>Focus terminal</span><span>Click a window</span></div>
+  <div><span>Return to flight</span><kbd>Esc</kbd></div>`;
+const settingsFooter = document.createElement("footer");
+const footerHint = document.createElement("span");
+footerHint.textContent = "Changes saved as you go";
 const closeSettings = document.createElement("button");
-closeSettings.textContent = "Close · ⌘/Ctrl + comma or plus";
-settings.append(heading, fontControl, speedControl, hud, closeSettings);
+closeSettings.type = "button";
+closeSettings.textContent = "Done";
+settingsFooter.append(footerHint, closeSettings);
+settings.append(settingsHeader, fontControl, speedRow, shortcuts, hud, settingsFooter);
 document.body.append(settings);
 function dismissSettings() {
   settings.close();
@@ -118,17 +156,14 @@ let flying = false;
 let dragging = false;
 
 function updateHud(note = "") {
-  hud.textContent = (active === null ? "FLIGHT" : "TERMINAL " + (active + 1))
-    + " · ⌘/Ctrl+T new terminal · "
-    + (active === null
-      ? "WASD move · Q/E down/up · Shift boost · mouse to look · F capture mouse · click terminal to type"
-      : "Esc return to flight")
-    + (note ? " · " + note : "");
+  hud.textContent = note;
+  hud.hidden = !note;
   reticle.hidden = !flying;
 }
 
 function flight() {
   if (active !== null) terminals.get(active)?.terminal.blur();
+  if (active !== null) terminals.get(active).dirty = true;
   active = null;
   keys.clear();
   velocity.set(0, 0, 0);
@@ -139,6 +174,7 @@ function focusTerminal(id) {
   if (document.pointerLockElement) document.exitPointerLock();
   flight();
   active = id;
+  terminals.get(id).dirty = true;
   const { plane, terminal } = terminals.get(id);
   const { width, height } = plane.geometry.parameters;
   const halfFov = THREE.MathUtils.degToRad(camera.fov / 2);
@@ -152,13 +188,23 @@ function focusTerminal(id) {
 
 async function createTerminal(position) {
   const id = nextId++;
+  const colors = terminalPalette[id % terminalPalette.length];
   const pane = document.createElement("section");
+  pane.style.background = colors.background;
   sources.append(pane);
   const terminal = new Terminal({
     cursorBlink: true,
     fontFamily: fontFamily(),
     fontSize: 14,
-    theme: { background: "#1e1e26", foreground: "#f0f0f5" }
+    theme: {
+      ...colors, cursor: colors.foreground, cursorAccent: colors.background,
+      selectionBackground: id % terminalPalette.length === 0 ? "#ffffff30" : "#655a4930",
+      black: "#39372f", red: "#b44235", green: "#4e702d", yellow: "#896014",
+      blue: "#365da4", magenta: "#8b497c", cyan: "#287475", white: "#e9e2d5",
+      brightBlack: "#89857c", brightRed: "#fa936f", brightGreen: "#b3d565",
+      brightYellow: "#edc879", brightBlue: "#96b9ef", brightMagenta: "#d7a0cb",
+      brightCyan: "#8dc9c0", brightWhite: "#fffaf0"
+    }
   });
   const fit = new FitAddon();
   terminal.loadAddon(fit);
@@ -171,7 +217,8 @@ async function createTerminal(position) {
   const composite = document.createElement("canvas");
   const padding = Math.round(20 * devicePixelRatio);
   composite.width = source.width + padding * 2;
-  composite.height = source.height + padding * 2;
+  const titleHeight = Math.round(48 * devicePixelRatio);
+  composite.height = source.height + padding * 2 + titleHeight;
   const texture = new THREE.CanvasTexture(composite);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.minFilter = THREE.LinearFilter;
@@ -179,7 +226,7 @@ async function createTerminal(position) {
   texture.generateMipmaps = false;
   const plane = new THREE.Mesh(
     new THREE.PlaneGeometry(8, 8 * composite.height / composite.width),
-    new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide })
+    new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, transparent: true, alphaTest: 0.01 })
   );
   plane.position.copy(position);
   // New terminals face the pilot, upright without roll or pitch.
@@ -187,12 +234,7 @@ async function createTerminal(position) {
   plane.userData.id = id;
   scene.add(plane);
   planes.push(plane);
-  const frame = new THREE.LineSegments(
-    new THREE.EdgesGeometry(plane.geometry),
-    new THREE.LineBasicMaterial({ color: "#7383a4" })
-  );
-  plane.add(frame);
-  const item = { terminal, fit, pane, plane, frame, texture, composite, padding,
+  const item = { terminal, fit, pane, plane, texture, composite, padding, titleHeight, colors,
     context: composite.getContext("2d"), dirty: true, ready: false };
   terminals.set(id, item);
   terminal.onRender(() => { item.dirty = true; });
@@ -318,15 +360,41 @@ renderer.setAnimationLoop(time => {
     camera.position.addScaledVector(velocity, dt);
   }
   for (const [id, item] of terminals) {
-    item.frame.material.color.set(id === active ? "#6be0c3" : "#7383a4");
     if (!item.dirty) continue;
-    const { context, composite, pane, texture, padding } = item;
-    context.fillStyle = "#1e1e26";
-    context.fillRect(0, 0, composite.width, composite.height);
-    for (const layer of pane.querySelectorAll(".xterm-screen canvas")) {
-      if (layer.width && layer.height) context.drawImage(layer, padding, padding,
-        composite.width - padding * 2, composite.height - padding * 2);
+    const { context, composite, pane, texture, padding, titleHeight, colors } = item;
+    const scale = devicePixelRatio;
+    const { width, height } = composite;
+    context.clearRect(0, 0, width, height);
+    context.save();
+    context.beginPath();
+    context.roundRect(scale, scale, width - scale * 2, height - scale * 2, 24 * scale);
+    context.fillStyle = colors.background;
+    context.fill();
+    context.strokeStyle = id === active ? colors.muted : colors.border;
+    context.lineWidth = (id === active ? 2 : 1) * scale;
+    context.stroke();
+    context.clip();
+    context.beginPath();
+    context.moveTo(0, titleHeight);
+    context.lineTo(width, titleHeight);
+    context.strokeStyle = colors.border;
+    context.lineWidth = scale;
+    context.stroke();
+    context.fillStyle = colors.muted;
+    for (let dot = 0; dot < 3; dot++) {
+      context.beginPath();
+      context.arc((24 + dot * 16) * scale, titleHeight / 2, 4.5 * scale, 0, Math.PI * 2);
+      context.fill();
     }
+    context.font = `${13 * scale}px ${fontFamily()}`;
+    context.textAlign = "right";
+    context.textBaseline = "middle";
+    context.fillText(`terminal ${String(id + 1).padStart(2, "0")}`, width - padding, titleHeight / 2);
+    for (const layer of pane.querySelectorAll(".xterm-screen canvas")) {
+      if (layer.width && layer.height) context.drawImage(layer, padding, titleHeight + padding,
+        width - padding * 2, height - titleHeight - padding * 2);
+    }
+    context.restore();
     texture.needsUpdate = true;
     item.dirty = false;
   }
