@@ -2,6 +2,9 @@
 
 A 3D space for your interactive terminals.
 
+Each completed foreground zsh command launches a little rocket from its terminal,
+with a golden exhaust trail. Animations respect the system's reduced-motion setting.
+
 ## Run locally
 
 - Node.js

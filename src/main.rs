@@ -31,6 +31,9 @@ fn spawn_terminal(output: Channel<TerminalOutput>, id: u32) -> anyhow::Result<Te
 
     let mut command = CommandBuilder::new("zsh");
     command.arg("-il");
+    command.env("TTYVERSE_ZDOTDIR", std::env::var("ZDOTDIR").unwrap_or_default());
+    command.env("TTYVERSE_SHELL_DIR", concat!(env!("CARGO_MANIFEST_DIR"), "/src/shell"));
+    command.env("ZDOTDIR", concat!(env!("CARGO_MANIFEST_DIR"), "/src/shell"));
     command.cwd(env!("CARGO_MANIFEST_DIR"));
     let child = pair.slave.spawn_command(command)?;
     drop(pair.slave);

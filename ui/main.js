@@ -4,6 +4,7 @@ import { CanvasAddon } from "@xterm/addon-canvas";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import * as THREE from "three";
+import { createRocketLauncher } from "./rockets";
 import "./style.css";
 
 const sources = document.querySelector("#terminals");
@@ -35,6 +36,7 @@ reticle.textContent = "+";
 document.body.append(reticle);
 
 const scene = new THREE.Scene();
+const rocketLauncher = createRocketLauncher(scene);
 const backdrop = document.createElement("canvas");
 backdrop.width = backdrop.height = 512;
 const backdropContext = backdrop.getContext("2d");
@@ -315,6 +317,12 @@ async function createTerminal(position) {
   const item = { terminal, fit, pane, plane, texture, composite, padding, titleHeight, colors,
     context: composite.getContext("2d"), dirty: true, ready: false };
   terminals.set(id, item);
+  // xterm handles escape sequences even when they span PTY output chunks.
+  terminal.parser.registerOscHandler(777, data => {
+    if (!/^ttyverse;complete;\d+$/.test(data)) return false;
+    rocketLauncher.launch(plane);
+    return true;
+  });
   terminal.onRender(() => { item.dirty = true; });
   terminal.onSelectionChange(() => { item.dirty = true; });
   terminal.onScroll(() => { item.dirty = true; });
@@ -442,6 +450,7 @@ let lastTime = performance.now();
 renderer.setAnimationLoop(time => {
   const dt = Math.min((time - lastTime) / 1000, 0.05);
   lastTime = time;
+  rocketLauncher.update(dt);
   if (active === null && !settings.open) {
     direction.set(Number(keys.has("KeyD")) - Number(keys.has("KeyA")),
       Number(keys.has("KeyE")) - Number(keys.has("KeyQ")),
