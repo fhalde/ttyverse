@@ -11,6 +11,22 @@ const canvas = document.querySelector("#scene");
 const hud = document.createElement("aside");
 hud.id = "hud";
 document.body.append(hud);
+const speedControl = document.createElement("div");
+speedControl.id = "speed-control";
+speedControl.innerHTML = '<button type="button" aria-label="Decrease flight speed">−</button><output></output><button type="button" aria-label="Increase flight speed">+</button>';
+document.body.append(speedControl);
+const speeds = [0.5, 1, 2, 4, 8];
+let speedIndex = 1;
+function changeSpeed(delta) {
+  speedIndex = Math.max(0, Math.min(speeds.length - 1, speedIndex + delta));
+  speedControl.querySelector("output").textContent = "Flight speed " + speeds[speedIndex] + "×";
+  speedControl.firstElementChild.disabled = speedIndex === 0;
+  speedControl.lastElementChild.disabled = speedIndex === speeds.length - 1;
+}
+speedControl.firstElementChild.addEventListener("click", () => changeSpeed(-1));
+speedControl.lastElementChild.addEventListener("click", () => changeSpeed(1));
+speedControl.addEventListener("pointerdown", event => event.preventDefault());
+changeSpeed(0);
 const reticle = document.createElement("div");
 reticle.id = "reticle";
 reticle.textContent = "+";
@@ -33,6 +49,38 @@ stars.setAttribute("position", new THREE.BufferAttribute(positions, 3));
 scene.add(new THREE.Points(stars, new THREE.PointsMaterial({ color: "#6a789a", size: 0.12 })));
 
 const terminals = new Map();
+let selectedFont = localStorage.getItem("terminal-font") || "Menlo";
+const fontControl = document.createElement("label");
+fontControl.id = "font-control";
+fontControl.textContent = "Terminal font ";
+const fontSelect = document.createElement("select");
+fontSelect.setAttribute("aria-label", "Terminal font");
+fontSelect.add(new Option(selectedFont, selectedFont));
+fontControl.append(fontSelect);
+document.body.append(fontControl);
+function fontFamily() {
+  return JSON.stringify(selectedFont) + ", monospace";
+}
+invoke("list_system_fonts").then(families => {
+  const names = [...new Set([selectedFont, ...families])].sort((a, b) => a.localeCompare(b));
+  fontSelect.replaceChildren(...names.map(name => new Option(name, name)));
+  fontSelect.value = selectedFont;
+}).catch(error => { fontSelect.title = "Unable to list fonts: " + error; });
+fontSelect.addEventListener("change", async () => {
+  selectedFont = fontSelect.value;
+  localStorage.setItem("terminal-font", selectedFont);
+  await document.fonts.load("14px " + JSON.stringify(selectedFont));
+  for (const [id, item] of terminals) {
+    item.terminal.options.fontFamily = fontFamily();
+    item.fit.fit();
+    item.terminal.refresh(0, item.terminal.rows - 1);
+    item.dirty = true;
+    if (item.ready) {
+      invoke("resize_terminal", { id, cols: item.terminal.cols, rows: item.terminal.rows })
+        .catch(error => updateHud(String(error)));
+    }
+  }
+});
 const planes = [];
 const keys = new Set();
 const velocity = new THREE.Vector3();
@@ -48,7 +96,7 @@ function updateHud(note = "") {
   hud.textContent = (active === null ? "FLIGHT" : "TERMINAL " + (active + 1))
     + " · ⌘/Ctrl+T new terminal · "
     + (active === null
-      ? "WASD move · Q/E down/up · Shift boost · drag mouse to look · F capture mouse · click terminal to type"
+      ? "WASD move · Q/E down/up · Shift boost · mouse to look · F capture mouse · click terminal to type"
       : "Esc return to flight")
     + (note ? " · " + note : "");
   reticle.hidden = !flying;
@@ -66,7 +114,14 @@ function focusTerminal(id) {
   if (document.pointerLockElement) document.exitPointerLock();
   flight();
   active = id;
-  terminals.get(id).terminal.focus();
+  const { plane, terminal } = terminals.get(id);
+  const { width, height } = plane.geometry.parameters;
+  const halfFov = THREE.MathUtils.degToRad(camera.fov / 2);
+  const distance = Math.max(height / 2, width / (2 * camera.aspect)) / Math.tan(halfFov) * 1.2;
+  const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(plane.quaternion);
+  camera.position.copy(plane.position).addScaledVector(normal, distance);
+  camera.lookAt(plane.position);
+  terminal.focus();
   updateHud();
 }
 
@@ -76,7 +131,7 @@ async function createTerminal(position) {
   sources.append(pane);
   const terminal = new Terminal({
     cursorBlink: true,
-    fontFamily: "Menlo, Monaco, 'Courier New', monospace",
+    fontFamily: fontFamily(),
     fontSize: 14,
     theme: { background: "#1e1e26", foreground: "#f0f0f5" }
   });
@@ -111,7 +166,7 @@ async function createTerminal(position) {
     new THREE.LineBasicMaterial({ color: "#7383a4" })
   );
   plane.add(frame);
-  const item = { terminal, pane, plane, frame, texture, composite,
+  const item = { terminal, fit, pane, plane, frame, texture, composite,
     context: composite.getContext("2d"), dirty: true, ready: false };
   terminals.set(id, item);
   terminal.onRender(() => { item.dirty = true; });
@@ -144,6 +199,7 @@ function look(dx, dy) {
 }
 
 window.addEventListener("keydown", event => {
+  if (event.target.closest?.("#font-control")) return;
   if ((event.metaKey || event.ctrlKey) && event.code === "KeyT") {
     event.preventDefault();
     event.stopImmediatePropagation();
@@ -176,7 +232,7 @@ document.addEventListener("pointerlockchange", () => {
 });
 document.addEventListener("pointerlockerror", () => updateHud("Drag mouse to look"));
 document.addEventListener("mousemove", event => {
-  if (active === null && (flying || dragging)) look(event.movementX, event.movementY);
+  if (active === null && !event.target.closest?.("#font-control, #speed-control")) look(event.movementX, event.movementY);
 });
 let down = null;
 canvas.addEventListener("pointerdown", event => {
@@ -221,7 +277,7 @@ renderer.setAnimationLoop(time => {
       Number(keys.has("KeyE")) - Number(keys.has("KeyQ")),
       Number(keys.has("KeyS")) - Number(keys.has("KeyW")));
     direction.normalize().applyQuaternion(camera.quaternion);
-    const speed = keys.has("ShiftLeft") || keys.has("ShiftRight") ? 24 : 8;
+    const speed = (keys.has("ShiftLeft") || keys.has("ShiftRight") ? 24 : 8) * speeds[speedIndex];
     velocity.lerp(direction.multiplyScalar(speed), 1 - Math.exp(-10 * dt));
     camera.position.addScaledVector(velocity, dt);
   }

@@ -8,6 +8,7 @@ portable-pty = "0.9"
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 tauri = "2.11.5"
+fontdb = "0.23"
 
 [build-dependencies]
 tauri-build = "2.6.3"

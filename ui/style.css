@@ -68,3 +68,55 @@ body {
   pointer-events: none;
   font: 20px monospace;
 }
+
+#speed-control {
+  position: fixed;
+  z-index: 3;
+  top: 20px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px;
+  border-radius: 8px;
+  background: #10141dee;
+  color: #c4d0e4;
+  font: 13px system-ui, sans-serif;
+}
+
+#speed-control button {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #526079;
+  border-radius: 5px;
+  background: #253047;
+  color: white;
+  cursor: pointer;
+  font-size: 20px;
+}
+
+#speed-control button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+#font-control {
+  position: fixed;
+  z-index: 3;
+  top: 20px;
+  left: 24px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #10141dee;
+  color: #c4d0e4;
+  font: 13px system-ui, sans-serif;
+}
+
+#font-control select {
+  max-width: 240px;
+  padding: 6px;
+  color: white;
+  background: #253047;
+  border: 1px solid #526079;
+  border-radius: 5px;
+}

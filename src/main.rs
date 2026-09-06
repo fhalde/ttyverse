@@ -104,11 +104,24 @@ fn resize_terminal(id: u32, cols: u16, rows: u16, state: State<TerminalState>) -
         .map_err(|error| error.to_string())
 }
 
+#[tauri::command]
+async fn list_system_fonts() -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let mut database = fontdb::Database::new();
+        database.load_system_fonts();
+        let families: std::collections::BTreeSet<String> = database.faces()
+            .flat_map(|face| face.families.iter().map(|(name, _)| name.clone()))
+            .collect();
+        families.into_iter().collect()
+    }).await.map_err(|error| error.to_string())
+}
+
 fn main() {
     tauri::Builder::default()
         .manage(TerminalState::default())
         .invoke_handler(tauri::generate_handler![
             create_terminal,
+            list_system_fonts,
             write_terminal,
             resize_terminal
         ])
