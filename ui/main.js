@@ -95,6 +95,8 @@ shortcuts.innerHTML = `<h3>Around your space</h3>
   <div><span>Look around</span><span>Mouse · <kbd>F</kbd> capture</span></div>
   <div><span>New terminal</span><kbd>⌘ / Ctrl + T</kbd></div>
   <div><span>Focus terminal</span><span>Click a window</span></div>
+  <div><span>Select text</span><span>Drag · double-click a word</span></div>
+  <div><span>Copy selection</span><kbd>⌘ C / Ctrl + Shift + C</kbd></div>
   <div><span>Return to flight</span><kbd>Esc</kbd></div>`;
 const settingsFooter = document.createElement("footer");
 const footerHint = document.createElement("span");
@@ -162,6 +164,11 @@ function updateHud(note = "") {
 }
 
 function flight() {
+  if (active !== null) {
+    const { pane } = terminals.get(active);
+    pane.classList.remove("focused");
+    pane.inert = true;
+  }
   if (active !== null) terminals.get(active)?.terminal.blur();
   if (active !== null) terminals.get(active).dirty = true;
   active = null;
@@ -175,15 +182,49 @@ function focusTerminal(id) {
   flight();
   active = id;
   terminals.get(id).dirty = true;
-  const { plane, terminal } = terminals.get(id);
+  const item = terminals.get(id);
+  frameTerminal(item);
+  item.pane.inert = false;
+  item.pane.classList.add("focused");
+  positionTerminalOverlay(item);
+  item.terminal.focus();
+  updateHud();
+}
+
+function frameTerminal({ plane }) {
   const { width, height } = plane.geometry.parameters;
   const halfFov = THREE.MathUtils.degToRad(camera.fov / 2);
   const distance = Math.max(height / 2, width / (2 * camera.aspect)) / Math.tan(halfFov) * 1.2;
   const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(plane.quaternion);
   camera.position.copy(plane.position).addScaledVector(normal, distance);
   camera.lookAt(plane.position);
-  terminal.focus();
-  updateHud();
+}
+
+function positionTerminalOverlay(item) {
+  const { plane, pane, composite, padding, titleHeight, terminal, fit } = item;
+  const { width, height } = plane.geometry.parameters;
+  camera.updateMatrixWorld();
+  plane.updateMatrixWorld();
+  const project = (x, y) => new THREE.Vector3(
+    (x / composite.width - 0.5) * width,
+    (0.5 - y / composite.height) * height, 0
+  ).applyMatrix4(plane.matrixWorld).project(camera);
+  const topLeft = project(padding, titleHeight + padding);
+  const bottomRight = project(composite.width - padding, composite.height - padding);
+  const bounds = canvas.getBoundingClientRect();
+  Object.assign(pane.style, {
+    left: `${bounds.left + (topLeft.x + 1) * bounds.width / 2}px`,
+    top: `${bounds.top + (1 - topLeft.y) * bounds.height / 2}px`,
+    width: `${(bottomRight.x - topLeft.x) * bounds.width / 2}px`,
+    height: `${(topLeft.y - bottomRight.y) * bounds.height / 2}px`
+  });
+  const { cols, rows } = terminal;
+  fit.fit();
+  item.dirty = true;
+  if (item.ready && (terminal.cols !== cols || terminal.rows !== rows)) {
+    invoke("resize_terminal", { id: plane.userData.id, cols: terminal.cols, rows: terminal.rows })
+      .catch(error => updateHud(String(error)));
+  }
 }
 
 function placeTerminal(plane, position) {
@@ -222,6 +263,8 @@ async function createTerminal(position) {
   const id = nextId++;
   const colors = terminalPalette[id % terminalPalette.length];
   const pane = document.createElement("section");
+  pane.inert = true;
+  pane.setAttribute("aria-label", `Terminal ${id + 1}`);
   pane.style.background = colors.background;
   sources.append(pane);
   const terminal = new Terminal({
@@ -273,6 +316,8 @@ async function createTerminal(position) {
     context: composite.getContext("2d"), dirty: true, ready: false };
   terminals.set(id, item);
   terminal.onRender(() => { item.dirty = true; });
+  terminal.onSelectionChange(() => { item.dirty = true; });
+  terminal.onScroll(() => { item.dirty = true; });
   terminal.onData((data) => {
     if (item.ready) invoke("write_terminal", { id, data }).catch(error => updateHud(String(error)));
   });
@@ -312,6 +357,13 @@ window.addEventListener("keydown", event => {
     return;
   }
   if (settings.open) return;
+  if (active !== null && event.ctrlKey && event.shiftKey && !event.altKey && event.code === "KeyC") {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    // Use xterm's native copy event handler, which supplies its selected text.
+    if (terminals.get(active).terminal.hasSelection()) document.execCommand("copy");
+    return;
+  }
   if (event.target.closest?.("#font-control")) return;
   if ((event.metaKey || event.ctrlKey) && event.code === "KeyT") {
     event.preventDefault();
@@ -374,6 +426,11 @@ function resize() {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
+  if (active !== null) {
+    const item = terminals.get(active);
+    frameTerminal(item);
+    positionTerminalOverlay(item);
+  }
 }
 window.addEventListener("resize", resize);
 resize();

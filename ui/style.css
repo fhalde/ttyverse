@@ -13,6 +13,8 @@ body {
 }
 
 #terminals {
+  pointer-events: none;
+  z-index: 2;
   box-sizing: border-box;
   display: flex;
   position: fixed;
@@ -25,6 +27,7 @@ body {
 }
 
 #terminals section {
+  opacity: 0;
   flex: 0 0 640px;
   position: absolute;
   inset: 0;
@@ -35,6 +38,14 @@ body {
   overflow: hidden;
   padding: 0;
   background: #191918;
+}
+
+#terminals section.focused {
+  opacity: 1;
+  position: fixed;
+  inset: auto;
+  z-index: 2;
+  pointer-events: auto;
 }
 
 #scene {
