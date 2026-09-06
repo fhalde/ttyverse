@@ -10,8 +10,7 @@ A 3D workspace for organizing, navigating and interacting with your terminals.
 - zsh
 
 ```sh
-npm run build
-cargo run
+npm run build && cargo run
 ```
 
 ## Creating Terminals
