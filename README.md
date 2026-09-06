@@ -2,6 +2,8 @@
 
 A 3D space for your interactive terminals.
 
+Starts with an empty space. Press ⌘/Ctrl + T to create your first terminal.
+
 Each completed foreground zsh command launches a little rocket from its terminal,
 with a golden exhaust trail. Animations respect the system's reduced-motion setting.
 

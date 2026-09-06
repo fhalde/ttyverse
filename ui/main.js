@@ -307,10 +307,8 @@ async function createTerminal(position) {
   );
   plane.position.copy(position);
   // New terminals face the pilot, upright without roll or pitch.
-  if (id >= 2) {
-    plane.rotation.y = camera.rotation.y;
-    placeTerminal(plane, position);
-  }
+  plane.rotation.y = camera.rotation.y;
+  placeTerminal(plane, position);
   plane.userData.id = id;
   scene.add(plane);
   planes.push(plane);
@@ -443,8 +441,6 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 updateHud();
-void createTerminal(new THREE.Vector3(-4.5, 0, 0));
-void createTerminal(new THREE.Vector3(4.5, 0, -1.8));
 
 let lastTime = performance.now();
 renderer.setAnimationLoop(time => {

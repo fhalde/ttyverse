@@ -51,14 +51,6 @@ fn spawn_terminal(output: Channel<TerminalOutput>, id: u32) -> anyhow::Result<Te
 
     let writer = Arc::new(Mutex::new(pair.master.take_writer()?));
     let master = Arc::new(Mutex::new(pair.master));
-    let startup_writer = Arc::clone(&writer);
-    thread::spawn(move || {
-        thread::sleep(std::time::Duration::from_millis(100));
-        if let Ok(mut writer) = startup_writer.lock() {
-            let _ = writer.write_all(b"ls\r");
-            let _ = writer.flush();
-        }
-    });
     Ok(Terminal {
         _child: child,
         master,
