@@ -1,4 +1,4 @@
-# TTY Party // 0.0.1
+# TTY Party
 
 A 3D space for your interactive terminals.
 
