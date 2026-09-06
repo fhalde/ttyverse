@@ -25,5 +25,5 @@ cargo run
 | F | Capture the mouse for flight |
 | Click a terminal | Move the camera to it and focus it for typing |
 | Esc | Leave the terminal and return to flight |
-| Cmd/Ctrl + T | Create a terminal ahead of the camera |
-| Cmd/Ctrl + comma or plus | Toggle settings for fonts and flight speed |
+| ⌘/Ctrl + T | Create a terminal ahead of the camera |
+| ⌘/Ctrl + , | Toggle settings for fonts and flight speed |
