@@ -120,3 +120,37 @@ body {
   border: 1px solid #526079;
   border-radius: 5px;
 }
+
+#settings {
+  width: min(460px, calc(100vw - 80px));
+  padding: 28px;
+  color: #d5f5f3;
+  background: #101e2bea;
+  border: 1px solid #70dbce80;
+  border-radius: 16px;
+  box-shadow: 0 0 60px #58dbc822;
+  backdrop-filter: blur(20px);
+  font: 14px/1.6 system-ui, sans-serif;
+}
+
+#settings::backdrop { background: #02091270; }
+#settings h2 { margin: 0 0 20px; font-size: 20px; font-weight: 500; }
+#settings #font-control,
+#settings #speed-control,
+#settings #hud {
+  position: static;
+  display: block;
+  background: transparent;
+  margin: 12px 0;
+  padding: 0;
+}
+#settings #speed-control { display: flex; }
+#settings > button {
+  margin-top: 12px;
+  padding: 8px 14px;
+  border: 1px solid #70dbce80;
+  border-radius: 6px;
+  background: #23454c;
+  color: #d5f5f3;
+  cursor: pointer;
+}

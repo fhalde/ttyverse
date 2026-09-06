@@ -58,6 +58,31 @@ fontSelect.setAttribute("aria-label", "Terminal font");
 fontSelect.add(new Option(selectedFont, selectedFont));
 fontControl.append(fontSelect);
 document.body.append(fontControl);
+const settings = document.createElement("dialog");
+settings.id = "settings";
+settings.setAttribute("aria-label", "Flight settings");
+const heading = document.createElement("h2");
+heading.textContent = "Flight settings";
+const closeSettings = document.createElement("button");
+closeSettings.textContent = "Close · ⌘/Ctrl + comma or plus";
+settings.append(heading, fontControl, speedControl, hud, closeSettings);
+document.body.append(settings);
+function dismissSettings() {
+  settings.close();
+  if (active !== null) terminals.get(active)?.terminal.focus();
+}
+function toggleSettings() {
+  if (settings.open) return dismissSettings();
+  document.exitPointerLock?.();
+  keys.clear();
+  velocity.set(0, 0, 0);
+  settings.showModal();
+}
+closeSettings.addEventListener("click", dismissSettings);
+settings.addEventListener("cancel", event => {
+  event.preventDefault();
+  dismissSettings();
+});
 function fontFamily() {
   return JSON.stringify(selectedFont) + ", monospace";
 }
@@ -144,15 +169,16 @@ async function createTerminal(position) {
   const source = pane.querySelector("canvas.xterm-text-layer");
   if (!source) throw new Error("Terminal canvas renderer unavailable");
   const composite = document.createElement("canvas");
-  composite.width = source.width;
-  composite.height = source.height;
+  const padding = Math.round(20 * devicePixelRatio);
+  composite.width = source.width + padding * 2;
+  composite.height = source.height + padding * 2;
   const texture = new THREE.CanvasTexture(composite);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.minFilter = THREE.LinearFilter;
   texture.magFilter = THREE.LinearFilter;
   texture.generateMipmaps = false;
   const plane = new THREE.Mesh(
-    new THREE.PlaneGeometry(8, 8 * source.height / source.width),
+    new THREE.PlaneGeometry(8, 8 * composite.height / composite.width),
     new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide })
   );
   plane.position.copy(position);
@@ -166,7 +192,7 @@ async function createTerminal(position) {
     new THREE.LineBasicMaterial({ color: "#7383a4" })
   );
   plane.add(frame);
-  const item = { terminal, fit, pane, plane, frame, texture, composite,
+  const item = { terminal, fit, pane, plane, frame, texture, composite, padding,
     context: composite.getContext("2d"), dirty: true, ready: false };
   terminals.set(id, item);
   terminal.onRender(() => { item.dirty = true; });
@@ -199,6 +225,16 @@ function look(dx, dy) {
 }
 
 window.addEventListener("keydown", event => {
+  if ((event.metaKey || event.ctrlKey) && (
+    event.code === "Comma" || event.key === "," || event.key === "+" ||
+    event.code === "Equal" || event.code === "NumpadAdd"
+  )) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (!event.repeat) toggleSettings();
+    return;
+  }
+  if (settings.open) return;
   if (event.target.closest?.("#font-control")) return;
   if ((event.metaKey || event.ctrlKey) && event.code === "KeyT") {
     event.preventDefault();
@@ -232,7 +268,7 @@ document.addEventListener("pointerlockchange", () => {
 });
 document.addEventListener("pointerlockerror", () => updateHud("Drag mouse to look"));
 document.addEventListener("mousemove", event => {
-  if (active === null && !event.target.closest?.("#font-control, #speed-control")) look(event.movementX, event.movementY);
+  if (!settings.open && active === null) look(event.movementX, event.movementY);
 });
 let down = null;
 canvas.addEventListener("pointerdown", event => {
@@ -272,7 +308,7 @@ let lastTime = performance.now();
 renderer.setAnimationLoop(time => {
   const dt = Math.min((time - lastTime) / 1000, 0.05);
   lastTime = time;
-  if (active === null) {
+  if (active === null && !settings.open) {
     direction.set(Number(keys.has("KeyD")) - Number(keys.has("KeyA")),
       Number(keys.has("KeyE")) - Number(keys.has("KeyQ")),
       Number(keys.has("KeyS")) - Number(keys.has("KeyW")));
@@ -284,11 +320,12 @@ renderer.setAnimationLoop(time => {
   for (const [id, item] of terminals) {
     item.frame.material.color.set(id === active ? "#6be0c3" : "#7383a4");
     if (!item.dirty) continue;
-    const { context, composite, pane, texture } = item;
+    const { context, composite, pane, texture, padding } = item;
     context.fillStyle = "#1e1e26";
     context.fillRect(0, 0, composite.width, composite.height);
     for (const layer of pane.querySelectorAll(".xterm-screen canvas")) {
-      if (layer.width && layer.height) context.drawImage(layer, 0, 0, composite.width, composite.height);
+      if (layer.width && layer.height) context.drawImage(layer, padding, padding,
+        composite.width - padding * 2, composite.height - padding * 2);
     }
     texture.needsUpdate = true;
     item.dirty = false;

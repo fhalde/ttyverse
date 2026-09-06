@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Scenic",
+  "productName": "TTY Party",
   "version": "0.1.0",
-  "identifier": "com.misfa.scenic",
+  "identifier": "ttyparty",
   "build": { "frontendDist": "dist" },
   "app": {
     "windows": [{ "title": "Scenic", "width": 1200, "height": 800 }],
