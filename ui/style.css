@@ -43,3 +43,28 @@ body {
   position: fixed;
   inset: 0;
 }
+
+#hud {
+  position: fixed;
+  z-index: 2;
+  bottom: 20px;
+  left: 24px;
+  right: 24px;
+  color: #c4d0e4;
+  font: 12px/1.6 system-ui, sans-serif;
+  pointer-events: none;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #10141dcc;
+}
+
+#reticle {
+  position: fixed;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #c4d0e4;
+  pointer-events: none;
+  font: 20px monospace;
+}
