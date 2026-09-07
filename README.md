@@ -1,5 +1,9 @@
 <img width="1180" height="600" alt="Screenshot 2026-09-07 at 09 43 48" src="https://github.com/user-attachments/assets/4409bf87-f06f-41d3-a590-52ed03c299c8" />
 
+## Demo
+
+https://github.com/user-attachments/assets/6530da1c-382b-4f29-9266-c4fecf7bcc09
+
 ## Installation
 - Node.js
 - npm
@@ -9,9 +13,6 @@
 ```sh
 npm install && npm run build && cargo run
 ```
-
-## Creating Terminals
-Press ⌘/Ctrl + T to create your first terminal.
 
 ## Controls
 
