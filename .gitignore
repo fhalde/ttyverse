@@ -2,3 +2,4 @@
 /target/
 /gen/
 /dist/
+src/shell/.zsh_history
