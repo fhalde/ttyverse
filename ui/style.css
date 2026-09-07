@@ -152,7 +152,7 @@ body {
 #settings #font-control, .settings-row { position: static; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0; padding: 18px 0; border-radius: 0; border-top: 1px solid #e8e0d4; background: transparent; }
 .control-copy { color: #39372f; font-size: 13px; font-weight: 600; }
 .control-copy small { display: block; margin-top: 4px; color: #8a7e6f; font-size: 11px; font-weight: 400; }
-#settings #font-control select { box-sizing: border-box; width: 185px; max-width: 48%; padding: 10px 12px; border: 1px solid #dfd5c6; background: #fffcf7; color: #494238; border-radius: 10px; font: 12px system-ui, sans-serif; }
+#settings select { box-sizing: border-box; width: 185px; max-width: 48%; flex-shrink: 0; padding: 10px 12px; border: 1px solid #dfd5c6; background: #fffcf7; color: #494238; border-radius: 10px; font: 12px system-ui, sans-serif; }
 #settings #speed-control { position: static; display: flex; gap: 4px; margin: 0; padding: 4px; background: #eee8de; border-radius: 12px; }
 #settings #speed-control button { width: 30px; height: 30px; border: 0; background: #fffcf7; border-radius: 8px; box-shadow: 0 1px 3px #51433112; font-size: 19px; }
 #speed-control output { min-width: 42px; text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; }

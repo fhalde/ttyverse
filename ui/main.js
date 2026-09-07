@@ -5,6 +5,7 @@ import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import * as THREE from "three";
 import { createRocketLauncher } from "./rockets";
+import { placeTerminal, planarPosition } from "./layout.mjs";
 import "./style.css";
 
 const sources = document.querySelector("#terminals");
@@ -70,6 +71,7 @@ const terminalPalette = [
   { background: "#f1dfd9", foreground: "#4d3734", muted: "#876c66", border: "#d6b9b0" }
 ];
 const terminals = new Map();
+let layoutMode = localStorage.getItem("space-layout") === "free" ? "free" : "planar";
 let selectedFont = localStorage.getItem("terminal-font") || "Menlo";
 const fontControl = document.createElement("label");
 fontControl.id = "font-control";
@@ -84,6 +86,16 @@ settings.id = "settings";
 settings.setAttribute("aria-label", "Settings");
 const settingsHeader = document.createElement("header");
 settingsHeader.innerHTML = '<span class="settings-eyebrow">MAKE YOURSELF AT HOME</span><h2>Settings<span aria-hidden="true">✳</span></h2><p>Your space. Your pace.</p>';
+const layoutControl = document.createElement("label");
+layoutControl.className = "settings-row";
+layoutControl.innerHTML = '<span class="control-copy">Space layout<small>Single plane places warm black terminals around your location.</small></span>';
+const layoutSelect = document.createElement("select");
+layoutSelect.setAttribute("aria-label", "Space layout");
+layoutSelect.add(new Option("3D · Free space", "free"));
+layoutSelect.add(new Option("3D · Single plane", "planar"));
+layoutSelect.value = layoutMode;
+layoutControl.append(layoutSelect);
+layoutSelect.addEventListener("change", () => changeLayout(layoutSelect.value));
 const speedRow = document.createElement("div");
 speedRow.className = "settings-row";
 speedRow.innerHTML = '<span class="control-copy">Flight speed<small>Find your cruising speed.</small></span>';
@@ -107,7 +119,7 @@ const closeSettings = document.createElement("button");
 closeSettings.type = "button";
 closeSettings.textContent = "Done";
 settingsFooter.append(footerHint, closeSettings);
-settings.append(settingsHeader, fontControl, speedRow, shortcuts, hud, settingsFooter);
+settings.append(settingsHeader, layoutControl, fontControl, speedRow, shortcuts, hud, settingsFooter);
 document.body.append(settings);
 function dismissSettings() {
   settings.close();
@@ -229,41 +241,45 @@ function positionTerminalOverlay(item) {
   }
 }
 
-function placeTerminal(plane, position) {
-  const { width, height } = plane.geometry.parameters;
-  const right = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quaternion);
-  const up = new THREE.Vector3(0, 1, 0).applyQuaternion(plane.quaternion);
-  const occupied = planes.map(existing => new THREE.Box3().setFromObject(existing)
-    .expandByScalar(0.5));
-  const bounds = new THREE.Box3();
-  const tryPosition = (column, row) => {
-    plane.position.copy(position)
-      .addScaledVector(right, column * (width + 1.5))
-      .addScaledVector(up, row * (height + 1.5));
-    bounds.setFromObject(plane).expandByScalar(0.5);
-    return occupied.every(other => !bounds.intersectsBox(other));
+function terminalColors(id) {
+  return terminalPalette[layoutMode === "planar" ? 0 : id % terminalPalette.length];
+}
+
+function themeColors(colors) {
+  return {
+    ...colors, cursor: colors.foreground, cursorAccent: colors.background,
+    selectionBackground: colors === terminalPalette[0] ? "#ffffff30" : "#655a4930"
   };
-  if (tryPosition(0, 0)) return;
-  // Search outward in the terminal's plane, leaving a gap between windows.
-  for (let ring = 1; ; ring++) {
-    const candidates = [];
-    for (let row = -ring; row <= ring; row++) {
-      for (let column = -ring; column <= ring; column++) {
-        if (Math.max(Math.abs(column), Math.abs(row)) !== ring) continue;
-        candidates.push({ column, row });
-      }
+}
+
+function changeLayout(mode) {
+  if (mode === layoutMode) return;
+  layoutMode = mode;
+  localStorage.setItem("space-layout", mode);
+  const placed = [];
+  for (const [id, item] of terminals) {
+    if (mode === "planar") {
+      const position = planarPosition(item.plane.position);
+      item.plane.rotation.set(0, 0, 0);
+      placeTerminal(item.plane, position, placed);
+      placed.push(item.plane);
     }
-    candidates.sort((a, b) => a.column ** 2 + a.row ** 2 - b.column ** 2 - b.row ** 2
-      || Math.abs(a.row) - Math.abs(b.row));
-    for (const { column, row } of candidates) {
-      if (tryPosition(column, row)) return;
-    }
+    item.colors = terminalColors(id);
+    item.pane.style.background = item.colors.background;
+    item.terminal.options.theme = { ...item.terminal.options.theme, ...themeColors(item.colors) };
+    item.terminal.refresh(0, item.terminal.rows - 1);
+    item.dirty = true;
+  }
+  if (active !== null) {
+    const item = terminals.get(active);
+    frameTerminal(item);
+    positionTerminalOverlay(item);
   }
 }
 
 async function createTerminal(position) {
   const id = nextId++;
-  const colors = terminalPalette[id % terminalPalette.length];
+  const colors = terminalColors(id);
   const pane = document.createElement("section");
   pane.inert = true;
   pane.setAttribute("aria-label", `Terminal ${id + 1}`);
@@ -274,8 +290,7 @@ async function createTerminal(position) {
     fontFamily: fontFamily(),
     fontSize: 14,
     theme: {
-      ...colors, cursor: colors.foreground, cursorAccent: colors.background,
-      selectionBackground: id % terminalPalette.length === 0 ? "#ffffff30" : "#655a4930",
+      ...themeColors(colors),
       black: "#39372f", red: "#b44235", green: "#4e702d", yellow: "#896014",
       blue: "#365da4", magenta: "#8b497c", cyan: "#287475", white: "#e9e2d5",
       brightBlack: "#89857c", brightRed: "#fa936f", brightGreen: "#b3d565",
@@ -307,8 +322,8 @@ async function createTerminal(position) {
   );
   plane.position.copy(position);
   // New terminals face the pilot, upright without roll or pitch.
-  plane.rotation.y = camera.rotation.y;
-  placeTerminal(plane, position);
+  plane.rotation.y = layoutMode === "planar" ? 0 : camera.rotation.y;
+  placeTerminal(plane, position, planes);
   plane.userData.id = id;
   scene.add(plane);
   planes.push(plane);
@@ -342,7 +357,9 @@ async function createTerminal(position) {
 
 function spawnAhead() {
   camera.getWorldDirection(direction);
-  const position = camera.position.clone().addScaledVector(direction, 12);
+  const position = layoutMode === "planar"
+    ? planarPosition(camera.position)
+    : camera.position.clone().addScaledVector(direction, 12);
   flight();
   void createTerminal(position).catch(error => updateHud(String(error)));
 }
@@ -452,7 +469,7 @@ renderer.setAnimationLoop(time => {
       Number(keys.has("KeyE")) - Number(keys.has("KeyQ")),
       Number(keys.has("KeyS")) - Number(keys.has("KeyW")));
     direction.normalize().applyQuaternion(camera.quaternion);
-    const speed = (keys.has("ShiftLeft") || keys.has("ShiftRight") ? 24 : 8) * speeds[speedIndex];
+    const speed = (keys.has("ShiftLeft") || keys.has("ShiftRight") ? 72 : 24) * speeds[speedIndex];
     velocity.lerp(direction.multiplyScalar(speed), 1 - Math.exp(-10 * dt));
     camera.position.addScaledVector(velocity, dt);
   }
