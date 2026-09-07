@@ -1,9 +1,6 @@
-# TTY verse
+<img width="1180" height="600" alt="Screenshot 2026-09-07 at 09 43 48" src="https://github.com/user-attachments/assets/4409bf87-f06f-41d3-a590-52ed03c299c8" />
 
-A 3D workspace for organizing, navigating and interacting with your terminals.
-
-## Run locally
-
+## Installation
 - Node.js
 - npm
 - Cargo/Rust toolchain
