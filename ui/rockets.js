@@ -21,6 +21,9 @@ export function createRocketLauncher(scene) {
   }
 
   return {
+    clear() {
+      while (rockets.length) remove(rockets.length - 1);
+    },
     launch(plane) {
       if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
       if (rockets.length >= 24) remove(0);

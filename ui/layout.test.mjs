@@ -1,7 +1,29 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as THREE from "three";
-import { PLANAR_DEPTH, planarPosition, placeTerminal } from "./layout.mjs";
+import { PLANAR_DEPTH, planarPosition, planarLookPosition, placeTerminal } from "./layout.mjs";
+
+test("planar placement follows the center of view from either side", () => {
+  for (const z of [18, -6]) {
+    const position = new THREE.Vector3(20, 30, z);
+    const target = new THREE.Vector3(32, 36, PLANAR_DEPTH);
+    const direction = target.clone().sub(position).normalize();
+    assert.ok(planarLookPosition(position, direction).distanceTo(target) < 1e-10);
+  }
+});
+
+test("looking away, parallel, or nearly parallel keeps placement nearby", () => {
+  const position = new THREE.Vector3(20, 30, 18);
+  for (const direction of [
+    new THREE.Vector3(1, 0, 0),
+    new THREE.Vector3(1, 0, 1).normalize(),
+    new THREE.Vector3(1, 0, -1e-8).normalize()
+  ]) {
+    const target = planarLookPosition(position, direction);
+    assert.equal(target.z, PLANAR_DEPTH);
+    assert.ok(target.distanceTo(planarPosition(position)) <= 12.000001);
+  }
+});
 
 function addTerminal(planes, position, height = 6) {
   const plane = new THREE.Mesh(new THREE.PlaneGeometry(8, height));

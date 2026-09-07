@@ -5,7 +5,7 @@ import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import * as THREE from "three";
 import { createRocketLauncher } from "./rockets";
-import { placeTerminal, planarPosition } from "./layout.mjs";
+import { placeTerminal, planarPosition, planarLookPosition } from "./layout.mjs";
 import "./style.css";
 
 const sources = document.querySelector("#terminals");
@@ -38,6 +38,7 @@ document.body.append(reticle);
 
 const scene = new THREE.Scene();
 const rocketLauncher = createRocketLauncher(scene);
+let rocketsEnabled = localStorage.getItem("rocket-launches") === "true";
 const backdrop = document.createElement("canvas");
 backdrop.width = backdrop.height = 512;
 const backdropContext = backdrop.getContext("2d");
@@ -100,6 +101,20 @@ const speedRow = document.createElement("div");
 speedRow.className = "settings-row";
 speedRow.innerHTML = '<span class="control-copy">Flight speed<small>Find your cruising speed.</small></span>';
 speedRow.append(speedControl);
+const rocketControl = document.createElement("label");
+rocketControl.className = "settings-row";
+rocketControl.innerHTML = '<span class="control-copy">Rocket launches<small>Launch a rocket when a command finishes.</small></span>';
+const rocketToggle = document.createElement("input");
+rocketToggle.type = "checkbox";
+rocketToggle.setAttribute("role", "switch");
+rocketToggle.setAttribute("aria-label", "Rocket launches");
+rocketToggle.checked = rocketsEnabled;
+rocketToggle.addEventListener("change", () => {
+  rocketsEnabled = rocketToggle.checked;
+  localStorage.setItem("rocket-launches", String(rocketsEnabled));
+  if (!rocketsEnabled) rocketLauncher.clear();
+});
+rocketControl.append(rocketToggle);
 const shortcuts = document.createElement("div");
 shortcuts.className = "shortcuts";
 shortcuts.innerHTML = `<h3>Around your space</h3>
@@ -119,7 +134,7 @@ const closeSettings = document.createElement("button");
 closeSettings.type = "button";
 closeSettings.textContent = "Done";
 settingsFooter.append(footerHint, closeSettings);
-settings.append(settingsHeader, layoutControl, fontControl, speedRow, shortcuts, hud, settingsFooter);
+settings.append(settingsHeader, layoutControl, fontControl, speedRow, rocketControl, shortcuts, hud, settingsFooter);
 document.body.append(settings);
 function dismissSettings() {
   settings.close();
@@ -277,7 +292,7 @@ function changeLayout(mode) {
   }
 }
 
-async function createTerminal(position) {
+async function createTerminal(position, { focus = false } = {}) {
   const id = nextId++;
   const colors = terminalColors(id);
   const pane = document.createElement("section");
@@ -333,7 +348,7 @@ async function createTerminal(position) {
   // xterm handles escape sequences even when they span PTY output chunks.
   terminal.parser.registerOscHandler(777, data => {
     if (!/^ttyverse;complete;\d+$/.test(data)) return false;
-    rocketLauncher.launch(plane);
+    if (rocketsEnabled) rocketLauncher.launch(plane);
     return true;
   });
   terminal.onRender(() => { item.dirty = true; });
@@ -345,6 +360,8 @@ async function createTerminal(position) {
   const onOutput = new Channel();
   item.channel = onOutput;
   onOutput.onmessage = (payload) => terminal.write(new Uint8Array(payload.data));
+  // Frame immediately, before PTY startup, so the initial view cannot drift.
+  if (focus) focusTerminal(id);
   try {
     await invoke("create_terminal", { id, onOutput });
     item.ready = true;
@@ -358,7 +375,7 @@ async function createTerminal(position) {
 function spawnAhead() {
   camera.getWorldDirection(direction);
   const position = layoutMode === "planar"
-    ? planarPosition(camera.position)
+    ? planarLookPosition(camera.position, direction, camera.far / 2)
     : camera.position.clone().addScaledVector(direction, 12);
   flight();
   void createTerminal(position).catch(error => updateHud(String(error)));
@@ -458,6 +475,9 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 updateHud();
+// Both layouts start with an upright terminal squarely facing the camera.
+void createTerminal(planarPosition(camera.position), { focus: true })
+  .catch(error => updateHud(String(error)));
 
 let lastTime = performance.now();
 renderer.setAnimationLoop(time => {

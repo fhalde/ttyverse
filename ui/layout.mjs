@@ -6,6 +6,15 @@ export function planarPosition(position) {
   return new THREE.Vector3(position.x, position.y, PLANAR_DEPTH);
 }
 
+export function planarLookPosition(position, direction, maxDistance = 1000) {
+  const distance = (PLANAR_DEPTH - position.z) / direction.z;
+  if (Number.isFinite(distance) && distance > 0 && distance <= maxDistance) {
+    return planarPosition(position.clone().addScaledVector(direction, distance));
+  }
+  // Looking away or along the plane: keep placement nearby in the look direction.
+  return planarPosition(position.clone().addScaledVector(direction, 12));
+}
+
 export function placeTerminal(plane, position, planes) {
   const { width, height } = plane.geometry.parameters;
   const right = new THREE.Vector3(1, 0, 0).applyQuaternion(plane.quaternion);
