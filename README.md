@@ -7,7 +7,7 @@
 - zsh
 
 ```sh
-npm run build && cargo run
+npm install && npm run build && cargo run
 ```
 
 ## Creating Terminals
