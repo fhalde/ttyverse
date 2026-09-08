@@ -1,6 +1,6 @@
 ## ttyverse
 
-<img width="800" height="492" alt="647452312-6530da1c-382b-4f29-9266-c4fecf7bcc09-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/5e82faf6-7dae-4230-b730-4c81af7904f4" />
+<img width="800" height="500" alt="647452312-6530da1c-382b-4f29-9266-c4fecf7bcc09-converted" src="https://github.com/user-attachments/assets/1f4bce5a-0374-4f64-83b0-17eddab92164" />
 
 
 ## Installation
