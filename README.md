@@ -1,8 +1,7 @@
-<img width="1180" height="600" alt="Screenshot 2026-09-07 at 09 43 48" src="https://github.com/user-attachments/assets/4409bf87-f06f-41d3-a590-52ed03c299c8" />
+## ttyverse
 
-## Demo
+<img width="800" height="492" alt="647452312-6530da1c-382b-4f29-9266-c4fecf7bcc09-ezgif com-video-to-gif-converter" src="https://github.com/user-attachments/assets/5e82faf6-7dae-4230-b730-4c81af7904f4" />
 
-https://github.com/user-attachments/assets/6530da1c-382b-4f29-9266-c4fecf7bcc09
 
 ## Installation
 - Node.js
