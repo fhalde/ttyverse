@@ -6,6 +6,7 @@ import "@xterm/xterm/css/xterm.css";
 import * as THREE from "three";
 import { createRocketLauncher } from "./rockets";
 import { placeTerminal, planarPosition, planarLookPosition } from "./layout.mjs";
+import { snapToPixel, compositeSize } from "./rendering.mjs";
 import "./style.css";
 
 const sources = document.querySelector("#terminals");
@@ -19,7 +20,7 @@ speedControl.innerHTML = '<button type="button" aria-label="Decrease flight spee
 document.body.append(speedControl);
 const speeds = [0.5, 1, 2, 4, 8];
 let speedIndex = speeds.indexOf(Number(localStorage.getItem("flight-speed")));
-if (speedIndex < 0) speedIndex = 1;
+if (speedIndex < 0) speedIndex = speeds.indexOf(2);
 function changeSpeed(delta) {
   speedIndex = Math.max(0, Math.min(speeds.length - 1, speedIndex + delta));
   localStorage.setItem("flight-speed", String(speeds[speedIndex]));
@@ -230,22 +231,25 @@ function frameTerminal({ plane }) {
 }
 
 function positionTerminalOverlay(item) {
-  const { plane, pane, composite, padding, titleHeight, terminal, fit } = item;
+  const { plane, pane, insets, terminal, fit } = item;
   const { width, height } = plane.geometry.parameters;
   camera.updateMatrixWorld();
   plane.updateMatrixWorld();
   const project = (x, y) => new THREE.Vector3(
-    (x / composite.width - 0.5) * width,
-    (0.5 - y / composite.height) * height, 0
+    (x - 0.5) * width,
+    (0.5 - y) * height, 0
   ).applyMatrix4(plane.matrixWorld).project(camera);
-  const topLeft = project(padding, titleHeight + padding);
-  const bottomRight = project(composite.width - padding, composite.height - padding);
+  const topLeft = project(insets.x, insets.top);
+  const bottomRight = project(1 - insets.x, 1 - insets.bottom);
   const bounds = canvas.getBoundingClientRect();
+  const pixel = value => snapToPixel(value, devicePixelRatio);
+  const left = pixel(bounds.left + (topLeft.x + 1) * bounds.width / 2);
+  const top = pixel(bounds.top + (1 - topLeft.y) * bounds.height / 2);
+  const right = pixel(bounds.left + (bottomRight.x + 1) * bounds.width / 2);
+  const bottom = pixel(bounds.top + (1 - bottomRight.y) * bounds.height / 2);
   Object.assign(pane.style, {
-    left: `${bounds.left + (topLeft.x + 1) * bounds.width / 2}px`,
-    top: `${bounds.top + (1 - topLeft.y) * bounds.height / 2}px`,
-    width: `${(bottomRight.x - topLeft.x) * bounds.width / 2}px`,
-    height: `${(topLeft.y - bottomRight.y) * bounds.height / 2}px`
+    left: `${left}px`, top: `${top}px`,
+    width: `${right - left}px`, height: `${bottom - top}px`
   });
   const { cols, rows } = terminal;
   fit.fit();
@@ -343,6 +347,9 @@ async function createTerminal(position, { focus = false } = {}) {
   scene.add(plane);
   planes.push(plane);
   const item = { terminal, fit, pane, plane, texture, composite, padding, titleHeight, colors,
+    insets: { x: padding / composite.width, top: (titleHeight + padding) / composite.height,
+      bottom: padding / composite.height },
+    frameCssWidth: composite.width / devicePixelRatio,
     context: composite.getContext("2d"), dirty: true, ready: false };
   terminals.set(id, item);
   // xterm handles escape sequences even when they span PTY output chunks.
@@ -463,6 +470,7 @@ canvas.addEventListener("pointercancel", () => { dragging = false; down = null; 
 canvas.addEventListener("contextmenu", event => event.preventDefault());
 
 function resize() {
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
@@ -473,6 +481,7 @@ function resize() {
   }
 }
 window.addEventListener("resize", resize);
+let displayDensity = devicePixelRatio;
 resize();
 updateHud();
 // Both layouts start with an upright terminal squarely facing the camera.
@@ -481,6 +490,14 @@ void createTerminal(planarPosition(camera.position), { focus: true })
 
 let lastTime = performance.now();
 renderer.setAnimationLoop(time => {
+  if (displayDensity !== devicePixelRatio) {
+    displayDensity = devicePixelRatio;
+    resize();
+    for (const item of terminals.values()) {
+      item.terminal.refresh(0, item.terminal.rows - 1);
+      item.dirty = true;
+    }
+  }
   const dt = Math.min((time - lastTime) / 1000, 0.05);
   lastTime = time;
   rocketLauncher.update(dt);
@@ -495,8 +512,21 @@ renderer.setAnimationLoop(time => {
   }
   for (const [id, item] of terminals) {
     if (!item.dirty) continue;
-    const { context, composite, pane, texture, padding, titleHeight, colors } = item;
-    const scale = devicePixelRatio;
+    const { context, composite, pane, colors } = item;
+    const source = pane.querySelector("canvas.xterm-text-layer");
+    if (!source?.width || !source.height) continue;
+    const { width: bitmapWidth, height: bitmapHeight, padding, textTop, titleHeight } =
+      compositeSize(source.width, source.height, item.insets);
+    if (composite.width !== bitmapWidth || composite.height !== bitmapHeight) {
+      composite.width = bitmapWidth;
+      composite.height = bitmapHeight;
+      // GPU texture storage must be recreated when its dimensions change.
+      const previous = item.texture;
+      item.texture = previous.clone();
+      item.plane.material.map = item.texture;
+      previous.dispose();
+    }
+    const scale = composite.width / item.frameCssWidth;
     const { width, height } = composite;
     context.clearRect(0, 0, width, height);
     context.save();
@@ -525,11 +555,10 @@ renderer.setAnimationLoop(time => {
     context.textBaseline = "middle";
     context.fillText(`terminal ${String(id + 1).padStart(2, "0")}`, width - padding, titleHeight / 2);
     for (const layer of pane.querySelectorAll(".xterm-screen canvas")) {
-      if (layer.width && layer.height) context.drawImage(layer, padding, titleHeight + padding,
-        width - padding * 2, height - titleHeight - padding * 2);
+      if (layer.width && layer.height) context.drawImage(layer, padding, textTop);
     }
     context.restore();
-    texture.needsUpdate = true;
+    item.texture.needsUpdate = true;
     item.dirty = false;
   }
   renderer.render(scene, camera);
