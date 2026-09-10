@@ -1,0 +1,55 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Texture patch verification</title>
+<pre id="result">Running GPU pixel comparison…</pre>
+<script type="module">
+import * as THREE from "three";
+import { createTexturePatcher } from "./texture-patch.mjs";
+const result = document.querySelector("#result");
+try {
+  const renderer = new THREE.WebGLRenderer();
+  const patch = createTexturePatcher(renderer);
+  const canvas = document.createElement("canvas");
+  canvas.width = 128; canvas.height = 96;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#ae371b"; ctx.fillRect(0, 0, 128, 48);
+  ctx.fillStyle = "#1833cc"; ctx.fillRect(0, 48, 128, 48);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.generateMipmaps = false;
+  texture.minFilter = THREE.LinearFilter;
+  const reference = texture.clone();
+  const material = new THREE.MeshBasicMaterial({ map: texture });
+  const scene = new THREE.Scene();
+  scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material));
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10);
+  camera.position.z = 1;
+  const target = new THREE.WebGLRenderTarget(128, 96);
+  function pixels(map) {
+    material.map = map;
+    renderer.setRenderTarget(target);
+    renderer.render(scene, camera);
+    const data = new Uint8Array(128 * 96 * 4);
+    renderer.readRenderTargetPixels(target, 0, 0, 128, 96, data);
+    renderer.setRenderTarget(null);
+    return data;
+  }
+  pixels(texture);
+  for (const [y, height] of [[4, 12], [64, 17], [0, 3], [93, 3]]) {
+    ctx.clearRect(0, y, 128, height);
+    ctx.fillStyle = "rgba(20, 230, 67, 0.7)";
+    ctx.fillRect(0, y, 128, height);
+    ctx.fillStyle = "#f9d612";
+    ctx.fillRect(8, y, 22, 2);
+    patch(texture, canvas, { y, height });
+    reference.needsUpdate = true;
+    const actual = pixels(texture);
+    const expected = pixels(reference);
+    const mismatch = actual.findIndex((value, index) => value !== expected[index]);
+    if (mismatch !== -1) throw new Error(`Patch y=${y}: pixel byte ${mismatch}: ${actual[mismatch]} != ${expected[mismatch]}`);
+  }
+  if (renderer.getContext().getError() !== 0) throw new Error("WebGL error");
+  result.textContent = "PASS: four successive partial uploads match full uploads pixel-for-pixel, including alpha and top/bottom edges.";
+  target.dispose(); texture.dispose(); reference.dispose(); material.dispose(); renderer.dispose();
+} catch (error) { result.textContent = "FAIL: " + error.stack; }
+</script>

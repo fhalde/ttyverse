@@ -7,6 +7,12 @@ import * as THREE from "three";
 import { createRocketLauncher } from "./rockets";
 import { placeTerminal, planarPosition, planarLookPosition } from "./layout.mjs";
 import { snapToPixel, compositeSize } from "./rendering.mjs";
+import { createOutputQueue } from "./output.mjs";
+import { Profiler } from "./profiler.mjs";
+import { TextureUpdateBudget, dirtyTextureRegion } from "./texture-updates.mjs";
+import { createTexturePatcher } from "./texture-patch.mjs";
+import { CanvasMemoryTracker, terminalCanvasBytes } from "./memory-metrics.mjs";
+import { createTerminalLogger } from "./terminal-logger.mjs";
 import "./style.css";
 
 const sources = document.querySelector("#terminals");
@@ -36,6 +42,11 @@ const reticle = document.createElement("div");
 reticle.id = "reticle";
 reticle.textContent = "+";
 document.body.append(reticle);
+const fpsCounter = document.createElement("div");
+fpsCounter.id = "fps-counter";
+fpsCounter.textContent = "— FPS";
+fpsCounter.setAttribute("aria-label", "Rendering frames per second");
+document.body.append(fpsCounter);
 
 const scene = new THREE.Scene();
 const rocketLauncher = createRocketLauncher(scene);
@@ -56,6 +67,9 @@ camera.rotation.order = "YXZ";
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+const textureBudget = new TextureUpdateBudget();
+const atlasMemory = new CanvasMemoryTracker();
+const patchTexture = createTexturePatcher(renderer);
 
 // A sparse field provides motion parallax while flying between terminals.
 const positions = new Float32Array(1800);
@@ -116,6 +130,61 @@ rocketToggle.addEventListener("change", () => {
   if (!rocketsEnabled) rocketLauncher.clear();
 });
 rocketControl.append(rocketToggle);
+const profileControl = document.createElement("div");
+profileControl.className = "settings-row";
+profileControl.innerHTML = '<span class="control-copy">Performance recording<small>Records timing and counts, never terminal text. Keeps the latest 10 minutes.</small></span>';
+const profileButton = document.createElement("button");
+profileButton.type = "button";
+profileButton.textContent = "Start recording";
+profileControl.append(profileButton);
+const profileStatus = document.createElement("p");
+profileStatus.id = "profile-status";
+profileStatus.hidden = true;
+let profileTimer;
+let pendingProfile;
+const profiler = new Profiler(() => ({
+  memory: {
+    atlas: atlasMemory.snapshot(),
+    terminalCanvasRgbaBytes: terminalCanvasBytes(terminals.values()),
+    terminalTextureRgbaBytes: [...terminals.values()].reduce((bytes, item) =>
+      bytes + item.composite.width * item.composite.height * 4, 0),
+    webglTextureCount: renderer.info.memory.textures,
+    webglGeometryCount: renderer.info.memory.geometries
+  },
+  layout: layoutMode, activeTerminal: active, settingsOpen: settings.open,
+  documentHidden: document.hidden, viewport: [innerWidth, innerHeight], density: devicePixelRatio,
+  terminals: [...terminals].map(([id, item]) => ({ id, visible: !!item.inView,
+    diagnostics: { ...item.logger.counts },
+    queuedBytes: item.pendingOutputBytes ?? 0, cols: item.terminal.cols, rows: item.terminal.rows,
+    textureSize: [item.composite.width, item.composite.height] }))
+}));
+profileButton.addEventListener("click", async () => {
+  if (!profiler.active && !pendingProfile) {
+    profiler.start({ startedAt: new Date().toISOString(), userAgent: navigator.userAgent,
+      canvasBitmapPolicy: "webkit-direct-canvas-v1",
+      rendererPixelRatio: renderer.getPixelRatio(), textureUpdates: "shared-budget-with-row-patches",
+      textureBytesPerSecond: textureBudget.rate, maxTerminalUploadsPerFrame: 1 });
+    profileTimer = setInterval(() => profiler.flush(), 1000);
+    profileButton.textContent = "Stop & save";
+    profileStatus.textContent = "Recording. Close Settings and use the app, then return here to stop.";
+    profileStatus.hidden = false;
+    return;
+  }
+  if (profiler.active) {
+    clearInterval(profileTimer);
+    pendingProfile = profiler.stop();
+  }
+  profileButton.disabled = true;
+  try {
+    const path = await invoke("save_profile", { report: JSON.stringify(pendingProfile) });
+    profileStatus.textContent = `Saved to ${path} — send this path to Codex for analysis. Temporary reports may be removed by macOS.`;
+    pendingProfile = null;
+    profileButton.textContent = "Start recording";
+  } catch (error) {
+    profileStatus.textContent = `Could not save: ${error}. The recording is retained for retry.`;
+    profileButton.textContent = "Retry save";
+  } finally { profileButton.disabled = false; }
+});
 const shortcuts = document.createElement("div");
 shortcuts.className = "shortcuts";
 shortcuts.innerHTML = `<h3>Around your space</h3>
@@ -135,7 +204,7 @@ const closeSettings = document.createElement("button");
 closeSettings.type = "button";
 closeSettings.textContent = "Done";
 settingsFooter.append(footerHint, closeSettings);
-settings.append(settingsHeader, layoutControl, fontControl, speedRow, rocketControl, shortcuts, hud, settingsFooter);
+settings.append(settingsHeader, layoutControl, fontControl, speedRow, rocketControl, profileControl, profileStatus, shortcuts, hud, settingsFooter);
 document.body.append(settings);
 function dismissSettings() {
   settings.close();
@@ -167,9 +236,10 @@ fontSelect.addEventListener("change", async () => {
   await document.fonts.load("14px " + JSON.stringify(selectedFont));
   for (const [id, item] of terminals) {
     item.terminal.options.fontFamily = fontFamily();
+    item.focusFrameDrawn = false;
     item.fit.fit();
     item.terminal.refresh(0, item.terminal.rows - 1);
-    item.dirty = true;
+    markTerminalDirty(item);
     if (item.ready) {
       invoke("resize_terminal", { id, cols: item.terminal.cols, rows: item.terminal.rows })
         .catch(error => updateHud(String(error)));
@@ -200,7 +270,7 @@ function flight() {
     pane.inert = true;
   }
   if (active !== null) terminals.get(active)?.terminal.blur();
-  if (active !== null) terminals.get(active).dirty = true;
+  if (active !== null) markTerminalDirty(terminals.get(active));
   active = null;
   keys.clear();
   velocity.set(0, 0, 0);
@@ -211,7 +281,7 @@ function focusTerminal(id) {
   if (document.pointerLockElement) document.exitPointerLock();
   flight();
   active = id;
-  terminals.get(id).dirty = true;
+  markTerminalDirty(terminals.get(id));
   const item = terminals.get(id);
   frameTerminal(item);
   item.pane.inert = false;
@@ -231,6 +301,7 @@ function frameTerminal({ plane }) {
 }
 
 function positionTerminalOverlay(item) {
+  item.focusFrameDrawn = false;
   const { plane, pane, insets, terminal, fit } = item;
   const { width, height } = plane.geometry.parameters;
   camera.updateMatrixWorld();
@@ -253,7 +324,7 @@ function positionTerminalOverlay(item) {
   });
   const { cols, rows } = terminal;
   fit.fit();
-  item.dirty = true;
+  markTerminalDirty(item);
   if (item.ready && (terminal.cols !== cols || terminal.rows !== rows)) {
     invoke("resize_terminal", { id: plane.userData.id, cols: terminal.cols, rows: terminal.rows })
       .catch(error => updateHud(String(error)));
@@ -287,7 +358,7 @@ function changeLayout(mode) {
     item.pane.style.background = item.colors.background;
     item.terminal.options.theme = { ...item.terminal.options.theme, ...themeColors(item.colors) };
     item.terminal.refresh(0, item.terminal.rows - 1);
-    item.dirty = true;
+    markTerminalDirty(item);
   }
   if (active !== null) {
     const item = terminals.get(active);
@@ -304,7 +375,10 @@ async function createTerminal(position, { focus = false } = {}) {
   pane.setAttribute("aria-label", `Terminal ${id + 1}`);
   pane.style.background = colors.background;
   sources.append(pane);
+  const logger = createTerminalLogger(kind => profiler.count(`terminal.${id}.${kind}`));
   const terminal = new Terminal({
+    logger,
+    logLevel: "warn",
     cursorBlink: true,
     fontFamily: fontFamily(),
     fontSize: 14,
@@ -320,7 +394,11 @@ async function createTerminal(position, { focus = false } = {}) {
   const fit = new FitAddon();
   terminal.loadAddon(fit);
   terminal.open(pane);
-  terminal.loadAddon(new CanvasAddon());
+  const canvasAddon = new CanvasAddon();
+  canvasAddon.onAddTextureAtlasCanvas(canvas => atlasMemory.observe(canvas));
+  canvasAddon.onChangeTextureAtlas(canvas => atlasMemory.observe(canvas));
+  terminal.loadAddon(canvasAddon);
+  atlasMemory.observe(canvasAddon.textureAtlas);
   fit.fit();
 
   const source = pane.querySelector("canvas.xterm-text-layer");
@@ -346,7 +424,7 @@ async function createTerminal(position, { focus = false } = {}) {
   plane.userData.id = id;
   scene.add(plane);
   planes.push(plane);
-  const item = { terminal, fit, pane, plane, texture, composite, padding, titleHeight, colors,
+  const item = { terminal, logger, fit, pane, plane, texture, composite, padding, titleHeight, colors,
     insets: { x: padding / composite.width, top: (titleHeight + padding) / composite.height,
       bottom: padding / composite.height },
     frameCssWidth: composite.width / devicePixelRatio,
@@ -358,19 +436,53 @@ async function createTerminal(position, { focus = false } = {}) {
     if (rocketsEnabled) rocketLauncher.launch(plane);
     return true;
   });
-  terminal.onRender(() => { item.dirty = true; });
-  terminal.onSelectionChange(() => { item.dirty = true; });
-  terminal.onScroll(() => { item.dirty = true; });
+  terminal.onRender(({ start, end }) => {
+    item.dirty = true;
+    item.dirtyRows = item.dirtyRows
+      ? { start: Math.min(start, item.dirtyRows.start), end: Math.max(end, item.dirtyRows.end) }
+      : { start, end };
+    profiler.count(`terminal.${id}.paintEvents`);
+  });
+  terminal.onSelectionChange(() => markTerminalDirty(item));
+  terminal.onScroll(() => markTerminalDirty(item));
   terminal.onData((data) => {
     if (item.ready) invoke("write_terminal", { id, data }).catch(error => updateHud(String(error)));
   });
   const onOutput = new Channel();
   item.channel = onOutput;
-  onOutput.onmessage = (payload) => terminal.write(new Uint8Array(payload.data));
+  let started;
+  const enqueueOutput = createOutputQueue(
+    (data, done) => {
+      const measured = profiler.active;
+      const generation = profiler.generation;
+      const start = measured ? performance.now() : 0;
+      terminal.write(data, () => {
+        item.pendingOutputBytes -= data.length;
+        if (measured && generation === profiler.generation) {
+          profiler.sample(`terminal.${id}.writeLatencyMs`, performance.now() - start);
+          profiler.count(`terminal.${id}.parsedBytes`, data.length);
+        }
+        done();
+      });
+    },
+    async bytes => {
+      await started;
+      await invoke("acknowledge_output", { id, bytes });
+    },
+    error => updateHud(String(error))
+  );
+  item.pendingOutputBytes = 0;
+  onOutput.onmessage = payload => {
+    item.pendingOutputBytes += payload.data.length;
+    profiler.count(`terminal.${id}.receivedBytes`, payload.data.length);
+    profiler.sample(`terminal.${id}.queuedBytes`, item.pendingOutputBytes);
+    enqueueOutput(new Uint8Array(payload.data));
+  };
   // Frame immediately, before PTY startup, so the initial view cannot drift.
   if (focus) focusTerminal(id);
   try {
-    await invoke("create_terminal", { id, onOutput });
+    started = invoke("create_terminal", { id, onOutput });
+    await started;
     item.ready = true;
     await invoke("resize_terminal", { id, cols: terminal.cols, rows: terminal.rows });
   } catch (error) {
@@ -489,13 +601,40 @@ void createTerminal(planarPosition(camera.position), { focus: true })
   .catch(error => updateHud(String(error)));
 
 let lastTime = performance.now();
+function markTerminalDirty(item) {
+  item.dirty = true;
+  item.fullDirty = true;
+}
+canvas.addEventListener("webglcontextrestored", () => {
+  for (const item of terminals.values()) {
+    item.hasUploaded = false;
+    item.focusFrameDrawn = false;
+    markTerminalDirty(item);
+  }
+});
+let fpsStart = lastTime;
+let fpsFrames = 0;
+const terminalFrustum = new THREE.Frustum();
+const viewProjection = new THREE.Matrix4();
+document.addEventListener("visibilitychange", () => {
+  fpsStart = performance.now();
+  fpsFrames = 0;
+  fpsCounter.textContent = "— FPS";
+});
 renderer.setAnimationLoop(time => {
+  if (profiler.active) profiler.sample("frameMs", time - lastTime);
+  fpsFrames++;
+  if (time - fpsStart >= 500) {
+    fpsCounter.textContent = `${Math.round(fpsFrames * 1000 / (time - fpsStart))} FPS${profiler.active ? " · REC" : ""}`;
+    fpsStart = time;
+    fpsFrames = 0;
+  }
   if (displayDensity !== devicePixelRatio) {
     displayDensity = devicePixelRatio;
     resize();
     for (const item of terminals.values()) {
       item.terminal.refresh(0, item.terminal.rows - 1);
-      item.dirty = true;
+      markTerminalDirty(item);
     }
   }
   const dt = Math.min((time - lastTime) / 1000, 0.05);
@@ -510,13 +649,46 @@ renderer.setAnimationLoop(time => {
     velocity.lerp(direction.multiplyScalar(speed), 1 - Math.exp(-10 * dt));
     camera.position.addScaledVector(velocity, dt);
   }
+  camera.updateMatrixWorld();
+  terminalFrustum.setFromProjectionMatrix(viewProjection.multiplyMatrices(
+    camera.projectionMatrix, camera.matrixWorldInverse));
+  const textureCandidates = [];
   for (const [id, item] of terminals) {
+    item.plane.updateMatrixWorld();
+    const visible = id === active || terminalFrustum.intersectsObject(item.plane);
+    if (item.inView !== visible) {
+      // xterm's IntersectionObserver pauses painting, not parsing. Keep hidden
+      // source canvases outside the viewport until their 3D terminal returns.
+      item.pane.classList.toggle("render-paused", !visible);
+    }
+    if (visible && !item.inView) {
+      item.terminal.refresh(0, item.terminal.rows - 1);
+      markTerminalDirty(item);
+    }
+    item.inView = visible;
+    if (!visible) continue;
+    // The live overlay covers the text while focused. Its frame only needs an
+    // upload on focus/resize; flight() marks the full texture dirty on leaving.
+    if (id === active && item.focusFrameDrawn) continue;
     if (!item.dirty) continue;
-    const { context, composite, pane, colors } = item;
-    const source = pane.querySelector("canvas.xterm-text-layer");
+    const source = item.pane.querySelector("canvas.xterm-text-layer");
     if (!source?.width || !source.height) continue;
-    const { width: bitmapWidth, height: bitmapHeight, padding, textTop, titleHeight } =
-      compositeSize(source.width, source.height, item.insets);
+    const size = compositeSize(source.width, source.height, item.insets);
+    const resized = item.composite.width !== size.width || item.composite.height !== size.height;
+    const region = dirtyTextureRegion(size.width, size.height, size.textTop, source.height,
+      item.terminal.rows, item.fullDirty || !item.hasUploaded || resized ? null : item.dirtyRows);
+    item.pendingTextureSince ??= time;
+    const distance = Math.max(1, camera.position.distanceTo(item.plane.position));
+    textureCandidates.push({ id, item, size, region, bytes: region.bytes, since: item.pendingTextureSince,
+      priority: id === active ? 3 : 1 + Math.min(1, item.plane.geometry.parameters.width / distance) });
+  }
+  const selected = textureBudget.select(textureCandidates, time);
+  if (profiler.active) profiler.sample("pendingTextureUpdates", textureCandidates.length);
+  if (selected) {
+    const { id, item, size, region } = selected;
+    const compositeStart = profiler.active ? performance.now() : 0;
+    const { context, composite, pane, colors } = item;
+    const { width: bitmapWidth, height: bitmapHeight, padding, textTop, titleHeight } = size;
     if (composite.width !== bitmapWidth || composite.height !== bitmapHeight) {
       composite.width = bitmapWidth;
       composite.height = bitmapHeight;
@@ -528,8 +700,11 @@ renderer.setAnimationLoop(time => {
     }
     const scale = composite.width / item.frameCssWidth;
     const { width, height } = composite;
-    context.clearRect(0, 0, width, height);
     context.save();
+    context.beginPath();
+    context.rect(0, region.y, width, region.height);
+    context.clip();
+    context.clearRect(0, region.y, width, region.height);
     context.beginPath();
     context.roundRect(scale, scale, width - scale * 2, height - scale * 2, 24 * scale);
     context.fillStyle = colors.background;
@@ -558,8 +733,25 @@ renderer.setAnimationLoop(time => {
       if (layer.width && layer.height) context.drawImage(layer, padding, textTop);
     }
     context.restore();
-    item.texture.needsUpdate = true;
+    if (profiler.active) {
+      profiler.sample(`terminal.${id}.compositeMs`, performance.now() - compositeStart);
+      profiler.count(`terminal.${id}.textureUploadRequests`);
+      profiler.count(`terminal.${id}.textureBytesRequested`, region.bytes);
+      profiler.count(`terminal.${id}.${region.full ? "fullUploads" : "partialUploads"}`);
+    }
+    const uploadStart = profiler.active ? performance.now() : 0;
+    if (region.full) item.texture.needsUpdate = true;
+    else patchTexture(item.texture, composite, region);
+    if (profiler.active) profiler.sample(`terminal.${id}.patchSubmitMs`, performance.now() - uploadStart);
+    item.lastTextureTime = time;
+    item.focusFrameDrawn = id === active;
     item.dirty = false;
+    item.hasUploaded = true;
+    item.fullDirty = false;
+    item.dirtyRows = null;
+    item.pendingTextureSince = null;
   }
+  const renderStart = profiler.active ? performance.now() : 0;
   renderer.render(scene, camera);
+  if (profiler.active) profiler.sample("renderSubmitMs", performance.now() - renderStart);
 });

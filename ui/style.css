@@ -48,6 +48,10 @@ body {
   pointer-events: auto;
 }
 
+#terminals section.render-paused:not(.focused) {
+  transform: translateX(-200vw);
+}
+
 #scene {
   z-index: 1;
   display: block;
@@ -78,6 +82,21 @@ body {
   color: #6b6258;
   pointer-events: none;
   font: 20px monospace;
+}
+
+#fps-counter {
+  position: fixed;
+  z-index: 3;
+  right: 20px;
+  bottom: 16px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: #faf6eed9;
+  color: #6b6258;
+  font: 11px/1.4 ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  user-select: none;
 }
 
 #speed-control {
@@ -172,6 +191,8 @@ kbd { display: inline-block; padding: 2px 6px; border: 1px solid #ddd4c7; border
 #settings button:hover:not(:disabled) { filter: brightness(.95); }
 #settings button:active:not(:disabled) { transform: translateY(1px); }
 #settings :focus-visible { outline: 2px solid #87966d; outline-offset: 3px; }
+#settings .settings-row > button { flex-shrink: 0; padding: 9px 12px; border: 1px solid #dfd5c6; border-radius: 10px; background: #fffcf7; color: #494238; cursor: pointer; }
+#profile-status { font-size: 11px; color: #6b6258; overflow-wrap: anywhere; user-select: text; }
 #settings #hud { position: static; margin: 12px 0 0; padding: 10px; background: #f1dfd9; font-size: 12px; }
 #settings #hud[hidden] { display: none; }
 @media (max-width: 420px) {

@@ -5,8 +5,11 @@ use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use tauri::{ipc::Channel, State};
+mod output_flow;
+use output_flow::{OutputFlow, CHUNK_SIZE};
 
 struct Terminal {
+    output_flow: Arc<OutputFlow>,
     _child: Box<dyn Child + Send + Sync>,
     master: Arc<Mutex<Box<dyn MasterPty + Send>>>,
     writer: Arc<Mutex<Box<dyn Write + Send>>>,
@@ -39,19 +42,27 @@ fn spawn_terminal(output: Channel<TerminalOutput>, id: u32) -> anyhow::Result<Te
     drop(pair.slave);
 
     let mut reader = pair.master.try_clone_reader()?;
+    let output_flow = Arc::new(OutputFlow::default());
+    let reader_flow = output_flow.clone();
     thread::spawn(move || {
-        let mut buffer = [0; 4096];
-        while let Ok(count) = reader.read(&mut buffer) {
+        let mut buffer = [0; CHUNK_SIZE];
+        loop {
+            reader_flow.wait_for_capacity();
+            let Ok(count) = reader.read(&mut buffer) else { break; };
             if count == 0 {
                 break;
             }
-            let _ = output.send(TerminalOutput { id, data: buffer[..count].to_vec() });
+            reader_flow.sent(count);
+            if output.send(TerminalOutput { id, data: buffer[..count].to_vec() }).is_err() {
+                break;
+            }
         }
     });
 
     let writer = Arc::new(Mutex::new(pair.master.take_writer()?));
     let master = Arc::new(Mutex::new(pair.master));
     Ok(Terminal {
+        output_flow,
         _child: child,
         master,
         writer,
@@ -70,6 +81,28 @@ fn create_terminal(
         .lock()
         .map_err(|error| error.to_string())?
         .insert(id, terminal);
+    Ok(())
+}
+
+#[tauri::command]
+fn save_profile(report: String) -> Result<String, String> {
+    if report.len() > 8 * 1024 * 1024 { return Err("Profile exceeds 8 MiB".into()); }
+    let directory = std::env::temp_dir().join("ttyverse-profiles");
+    std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+        .map_err(|error| error.to_string())?.as_nanos();
+    let path = directory.join(format!("profile-{timestamp}.json"));
+    let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&path)
+        .map_err(|error| error.to_string())?;
+    file.write_all(report.as_bytes()).map_err(|error| error.to_string())?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
+fn acknowledge_output(id: u32, bytes: usize, state: State<TerminalState>) -> Result<(), String> {
+    let terminals = state.0.lock().map_err(|error| error.to_string())?;
+    let terminal = terminals.get(&id).ok_or("terminal not found")?;
+    terminal.output_flow.acknowledge(bytes);
     Ok(())
 }
 
@@ -116,6 +149,8 @@ fn main() {
         .manage(TerminalState::default())
         .invoke_handler(tauri::generate_handler![
             create_terminal,
+            acknowledge_output,
+            save_profile,
             list_system_fonts,
             write_terminal,
             resize_terminal
