@@ -52,6 +52,13 @@ body {
   transform: translateX(-200vw);
 }
 
+#terminals .xterm-viewport {
+  /* WebKit retains native backing memory when this opaque scrolling layer
+     repeatedly changes height. The terminal pane already supplies the color.
+     Override xterm's inline theme background, including later theme changes. */
+  background-color: transparent !important;
+}
+
 #scene {
   z-index: 1;
   display: block;
